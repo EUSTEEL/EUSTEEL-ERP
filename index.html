@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>EUSTEEL MOBILE ERP</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Lexend', sans-serif; background-color: #f8fafc; }
+    .btn-grad { background-image: linear-gradient(to right, #1e3a8a 0%, #3b82f6 51%, #1e3a8a 100%); transition: 0.5s; background-size: 200% auto; }
+    .btn-grad:hover { background-position: right center; }
+    #video-container { position: relative; width: 100%; max-width: 400px; overflow: hidden; border-radius: 16px; display: none; background: #000; }
+    #scanner-line { position: absolute; width: 100%; height: 2px; background: #ef4444; top: 0; box-shadow: 0 0 8px #ef4444; animation: scan 1.5s linear infinite; }
+    @keyframes scan { 0% { top: 0%; } 100% { top: 100%; } }
+    .flash-success { animation: flashG 0.4s; }
+    @keyframes flashG { 0% { background-color: #22c55e; } 100% { background-color: transparent; } }
+    
+    .history-scroll::-webkit-scrollbar { width: 4px; }
+    .history-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
+    .history-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden">
+
+  <div class="bg-blue-900 text-white p-4 shadow-lg flex justify-between items-center z-10">
+    <div class="flex items-center gap-2">
+       <div class="w-8 h-8 bg-white rounded flex items-center justify-center text-blue-900 font-bold shadow">EUS</div>
+       <span class="font-semibold tracking-tight">EUSTEEL Mini ERP</span>
+    </div>
+    
+    <div class="flex items-center gap-3">
+      <div id="badge" class="hidden bg-yellow-400 text-blue-900 text-[10px] px-2 py-0.5 rounded-full font-bold shadow">CHỜ GỬI</div>
+      <svg id="sync-icon" class="w-6 h-6 text-green-400 transition-colors duration-300" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+      </svg>
+    </div>
+  </div>
+
+  <main class="flex-1 overflow-y-auto p-4 space-y-4" id="main-area">
+    
+    <div class="space-y-1">
+      <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Bước 1: Chọn Tổ làm việc</label>
+      <select id="toPhuTrach" class="w-full p-3 bg-white border-2 border-red-500 rounded-xl font-bold text-gray-700 shadow-sm focus:border-blue-600 transition-all outline-none">
+        <option value="" disabled selected>--- CHỌN TỔ ---</option>
+        <option value="ONG">Tổ Ống (ONG)</option>
+        <option value="EI">Tổ EI (EI)</option>
+        <option value="PK">Tổ Phụ Kiện (PK)</option>
+        <option value="Van">Tổ Van (Van)</option>
+        <option value="KHO">Kho TP (KHO)</option>
+      </select>
+    </div>
+
+    <div class="space-y-1">
+      <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Bước 2: Quét mã QR</label>
+      <div class="relative w-full">
+        <input type="text" id="maInput" placeholder="Quét tại đây..." autocomplete="off" readonly
+               class="w-full p-4 pr-16 bg-white border-2 border-emerald-500 rounded-xl font-bold text-2xl text-center shadow-sm focus:border-blue-600 outline-none transition-all">
+        
+        <button id="toggleKbBtn" onclick="toggleVirtualKeyboard()" class="absolute right-3 top-3 w-10 h-10 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg flex items-center justify-center text-xl shadow-sm focus:outline-none active:scale-90 transition-transform">
+          ⌨️
+        </button>
+      </div>
+    </div>
+
+    <div class="pt-2">
+      <button id="btn-start" onclick="startCamera()" class="btn-grad w-full py-4 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2">
+        📷 BẬT CAMERA QUÉT TRỰC TIẾP
+      </button>
+
+      <div id="video-container" class="mx-auto mt-2 border-4 border-blue-900 shadow-xl">
+        <video id="video" class="w-full"></video>
+        <div id="scanner-line"></div>
+        <button onclick="stopCamera()" class="absolute bottom-2 right-2 bg-red-600 text-white p-2 rounded-full px-4 text-xs font-bold shadow-lg">ĐÓNG</button>
+      </div>
+    </div>
+
+    <div id="status" class="hidden p-3 rounded-xl text-center font-bold text-sm shadow-sm border border-transparent transition-all"></div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+      <div class="bg-gray-50 p-2 text-[10px] font-bold text-gray-400 flex justify-between border-b shrink-0">
+        <span>LỊCH SỬ QUÉT (50 MÃ - CUỘN ĐỂ XEM)</span>
+        <span id="sync-status">Đã đồng bộ</span>
+      </div>
+      <ul id="history" class="divide-y divide-gray-50 max-h-60 overflow-y-auto overscroll-contain history-scroll">
+        <li class="p-4 text-center text-gray-300 text-xs italic">Chưa có dữ liệu...</li>
+      </ul>
+    </div>
+  </main>
+  
+  <canvas id="canvas" class="hidden"></canvas>
+
+  <script>
+    // 🔗 LINK API MỚI CỦA BẠN ĐÃ ĐƯỢC CẬP NHẬT
+    const API_URL = "https://script.google.com/macros/s/AKfycbyr8KCMxJJmSim3SiaqdWqOXrAwLXPQ9IYGmQeWINx_T2pDitCiqq_G6HWFYyM9bEb8/exec"; 
+
+    const input = document.getElementById('maInput');
+    const statusBox = document.getElementById('status');
+    const toPhuTrach = document.getElementById('toPhuTrach');
+    const historyList = document.getElementById('history');
+    const video = document.getElementById('video');
+    const videoContainer = document.getElementById('video-container');
+    const badge = document.getElementById('badge');
+    const syncIcon = document.getElementById('sync-icon');
+    const toggleKbBtn = document.getElementById('toggleKbBtn');
+
+    let queue = [];
+    let isSending = false;
+    let history = [];
+    let stream = null;
+    let scanning = false;
+    let isVirtualKeyboardActive = false;
+    let batchTimer = null; 
+
+    // --- LOGIC GIAO DIỆN ICON ĐỒNG BỘ MỚI ---
+    function setSyncState(state) {
+      // Xóa các class màu và hiệu ứng xoay
+      syncIcon.classList.remove('animate-spin', 'text-green-400', 'text-yellow-400', 'text-red-500', 'text-blue-400');
+      
+      if (state === 'idle') {
+        syncIcon.classList.add('text-green-400'); // Xanh lá: Xong
+      } else if (state === 'queued') {
+        syncIcon.classList.add('text-yellow-400'); // Vàng: Đang đợi gom
+      } else if (state === 'syncing') {
+        syncIcon.classList.add('animate-spin', 'text-blue-400'); // Xanh dương xoay: Đang đẩy
+      } else if (state === 'error') {
+        syncIcon.classList.add('text-red-500'); // Đỏ: Lỗi
+      }
+    }
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function unlockAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
+    document.body.addEventListener('touchstart', unlockAudio, { once: true });
+    document.body.addEventListener('click', unlockAudio, { once: true });
+
+    function playSound(freq, type, duration) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type; osc.frequency.value = freq;
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function playRingSound() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const t = audioCtx.currentTime;
+        const freqs = [1200, 1500, 2400]; 
+        freqs.forEach(freq => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine'; osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(t); osc.stop(t + 0.6);
+        });
+    }
+    
+    let barcodeDetector = null;
+    if ('BarcodeDetector' in window) {
+      barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+    }
+
+    toPhuTrach.addEventListener('change', () => { toPhuTrach.style.borderColor = "#10b981"; });
+
+    function toggleVirtualKeyboard() {
+      isVirtualKeyboardActive = !isVirtualKeyboardActive;
+      if (isVirtualKeyboardActive) {
+        input.removeAttribute('readonly'); 
+        toggleKbBtn.innerHTML = '🔒';
+        toggleKbBtn.classList.replace('bg-gray-100', 'bg-blue-100');
+        toggleKbBtn.classList.replace('text-gray-600', 'text-blue-700');
+        input.placeholder = "Nhập tay tại đây...";
+        input.focus();
+      } else {
+        input.setAttribute('readonly', 'true'); 
+        toggleKbBtn.innerHTML = '⌨️';
+        toggleKbBtn.classList.replace('bg-blue-100', 'bg-gray-100');
+        toggleKbBtn.classList.replace('text-blue-700', 'text-gray-600');
+        input.placeholder = "Quét tại đây...";
+        input.blur(); 
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (document.activeElement === toPhuTrach) return;
+      if (e.key === 'Enter') {
+        e.preventDefault(); 
+        let ma = input.value.trim();
+        if (ma !== "") {
+          if (!toPhuTrach.value) { msg("⚠️ Hãy chọn TỔ trước!", "error", "gun"); input.value = ""; return; }
+          let source = isVirtualKeyboardActive ? 'manual' : 'gun';
+          sendMa(ma, source);
+          input.value = ""; 
+        }
+      } 
+      else if (!isVirtualKeyboardActive && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+        input.value += e.key;
+      }
+      else if (!isVirtualKeyboardActive && e.key === 'Backspace') {
+        input.value = input.value.slice(0, -1);
+      }
+    });
+
+    async function startCamera() {
+      if (!toPhuTrach.value) { msg("⚠️ Hãy chọn TỔ trước!", "error", "cam"); return; }
+      try {
+        scanning = true;
+        const constraints = { video: { facingMode: "environment", width: { ideal: 720, max: 1280 } } };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+        video.setAttribute("playsinline", true);
+        video.play();
+        
+        const track = stream.getVideoTracks()[0];
+        const capabilities = track.getCapabilities();
+        if (capabilities.focusMode && capabilities.focusMode.includes("continuous")) {
+            track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(e=>e);
+        }
+
+        videoContainer.style.display = 'block';
+        document.getElementById('btn-start').classList.add('hidden');
+        requestAnimationFrame(tick);
+      } catch (err) { msg("❌ Trình duyệt từ chối quyền mở Camera!", "error", "cam"); }
+    }
+
+    function stopCamera() {
+      scanning = false;
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      videoContainer.style.display = 'none';
+      document.getElementById('btn-start').classList.remove('hidden');
+    }
+
+    let lastJsQRTime = 0;
+    
+    function tick(timestamp) {
+      if (!scanning) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        if (barcodeDetector) {
+          barcodeDetector.detect(video).then(barcodes => {
+              if (barcodes.length > 0) {
+                playRingSound(); 
+                sendMa(barcodes[0].rawValue.trim(), 'cam');
+                stopCamera(); return;
+              }
+              requestAnimationFrame(tick);
+            }).catch(() => fallbackJsQR(timestamp));
+        } else { fallbackJsQR(timestamp); }
+      } else { requestAnimationFrame(tick); }
+    }
+
+    function fallbackJsQR(timestamp) {
+        if (timestamp - lastJsQRTime > 100) {
+          lastJsQRTime = timestamp;
+          const canvas = document.getElementById('canvas');
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          const scale = Math.min(1, 350 / video.videoWidth);
+          canvas.width = video.videoWidth * scale; canvas.height = video.videoHeight * scale;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+          if (code) { playRingSound(); sendMa(code.data.trim(), 'cam'); stopCamera(); return; }
+        }
+        requestAnimationFrame(tick);
+    }
+
+    function sendMa(ma, source) {
+      if (!ma) return;
+      queue.push({ ma: ma, source: source });
+      updateQueueUI();
+      
+      if (!batchTimer) {
+        batchTimer = setTimeout(() => {
+           batchTimer = null;
+           processQueue();
+        }, 300);
+      }
+    }
+
+    function processQueue() {
+      if (isSending || queue.length === 0) return;
+      isSending = true;
+      const batch = [...queue];
+      queue = [];
+      updateQueueUI();
+      
+      // Bật chế độ Xoay vòng (Đang đẩy dữ liệu)
+      setSyncState('syncing');
+      
+      const payloadData = batch.map(b => b.ma);
+      
+      fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ danhSachMa: payloadData, toPhuTrach: toPhuTrach.value })
+      })
+      .then(response => response.json())
+      .then(res => {
+        isSending = false;
+        
+        if (res.error) { 
+          msg(res.msg, "error", "gun"); 
+          setSyncState('error'); 
+        } 
+        else {
+          res.results.forEach(item => {
+            const originalItem = batch.find(b => b.ma === item.ma);
+            const source = originalItem ? originalItem.source : 'gun';
+            updateHistory(item.ma, item.status === "SUCCESS");
+            msg(item.msg, item.status === "SUCCESS" ? "success" : "error", source);
+          });
+          
+          if (queue.length === 0) {
+             setSyncState('idle'); // Xong xuôi -> Xanh lá đứng yên
+          } else {
+             setSyncState('queued'); // Còn hàng đợi -> Chuyển màu vàng đợi gửi chuyến tiếp
+          }
+        }
+        if (queue.length > 0) processQueue();
+      })
+      .catch(err => {
+        isSending = false;
+        msg("LỖI MẠNG: Đang thử kết nối lại...", "error", "gun");
+        setSyncState('error'); // Lỗi mạng -> Đỏ đứng yên
+        
+        queue = [...batch, ...queue]; 
+        updateQueueUI();
+        setTimeout(processQueue, 2000); 
+      });
+    }
+
+    function msg(text, type, source) {
+      statusBox.innerText = text; statusBox.classList.remove('hidden');
+      statusBox.className = `p-3 rounded-xl text-center font-bold text-sm shadow-sm border ${type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 flash-success' : 'bg-red-50 text-red-700 border-red-200'}`;
+      if (type === 'error' || type === 'warn') { playSound(220, 'square', 0.3); } 
+      else if (type === 'success' && source === 'gun') { playSound(1000, 'sine', 0.15); }
+    }
+
+    function updateHistory(ma, ok) {
+      const now = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+      history.unshift(`<li class="p-3 flex justify-between items-center bg-white border-b"><span class="font-bold ${ok ? 'text-gray-700' : 'text-red-500 line-through'}">${ma}</span><span class="text-[10px] text-gray-400 font-mono">${now} ${ok ? '✅' : '❌'}</span></li>`);
+      historyList.innerHTML = history.slice(0, 50).join('');
+    }
+
+    function updateQueueUI() {
+      if (queue.length === 0) {
+        badge.classList.add('hidden');
+        document.getElementById('sync-status').innerText = "Đã đồng bộ";
+      } else {
+        badge.classList.remove('hidden');
+        badge.innerText = `Chờ gửi: ${queue.length}`;
+        document.getElementById('sync-status').innerText = `Đang gửi ${queue.length}...`;
+        if (!isSending) setSyncState('queued');
+      }
+    }
+  </script>
+</body>
+</html>
