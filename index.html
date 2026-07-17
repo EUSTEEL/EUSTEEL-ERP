@@ -84,7 +84,7 @@
         <span id="sync-status">Đã đồng bộ</span>
       </div>
       <ul id="history" class="divide-y divide-gray-50 max-h-60 overflow-y-auto overscroll-contain history-scroll">
-        <li class="p-4 text-center text-gray-300 text-xs italic">Chưa có data quét...</li>
+        <li class="p-4 text-center text-gray-300 text-xs italic">Chưa có dữ liệu...</li>
       </ul>
     </div>
   </main>
@@ -92,7 +92,6 @@
   <canvas id="canvas" class="hidden"></canvas>
 
   <script>
-    // 🔗 LINK API MỚI CỦA BẠN ĐÃ ĐƯỢC CẬP NHẬT
     const API_URL = "https://script.google.com/macros/s/AKfycbyr8KCMxJJmSim3SiaqdWqOXrAwLXPQ9IYGmQeWINx_T2pDitCiqq_G6HWFYyM9bEb8/exec"; 
 
     const input = document.getElementById('maInput');
@@ -107,26 +106,18 @@
 
     let queue = [];
     let isSending = false;
-    let history = [];
+    let historyData = []; // Mảng đối tượng lưu trữ trạng thái Lạc quan
     let stream = null;
     let scanning = false;
     let isVirtualKeyboardActive = false;
     let batchTimer = null; 
 
-    // --- LOGIC GIAO DIỆN ICON ĐỒNG BỘ MỚI ---
     function setSyncState(state) {
-      // Xóa các class màu và hiệu ứng xoay
       syncIcon.classList.remove('animate-spin', 'text-green-400', 'text-yellow-400', 'text-red-500', 'text-blue-400');
-      
-      if (state === 'idle') {
-        syncIcon.classList.add('text-green-400'); // Xanh lá: Xong
-      } else if (state === 'queued') {
-        syncIcon.classList.add('text-yellow-400'); // Vàng: Đang đợi gom
-      } else if (state === 'syncing') {
-        syncIcon.classList.add('animate-spin', 'text-blue-400'); // Xanh dương xoay: Đang đẩy
-      } else if (state === 'error') {
-        syncIcon.classList.add('text-red-500'); // Đỏ: Lỗi
-      }
+      if (state === 'idle') syncIcon.classList.add('text-green-400');
+      else if (state === 'queued') syncIcon.classList.add('text-yellow-400');
+      else if (state === 'syncing') syncIcon.classList.add('animate-spin', 'text-blue-400');
+      else if (state === 'error') syncIcon.classList.add('text-red-500');
     }
 
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -266,16 +257,28 @@
         requestAnimationFrame(tick);
     }
 
+    // --- CƠ CHẾ GỬI LẠC QUAN (SIÊU TỐC) ---
     function sendMa(ma, source) {
       if (!ma) return;
-      queue.push({ ma: ma, source: source });
+      
+      const id = Date.now() + Math.random();
+      const now = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+      
+      // 1. Phản hồi NGAY LẬP TỨC lên giao diện (để giảm 100% cảm giác chờ đợi)
+      historyData.unshift({ id: id, ma: ma, status: 'pending', time: now });
+      if(historyData.length > 50) historyData.pop();
+      renderHistory();
+
+      // Đẩy vào hàng đợi thật
+      queue.push({ id: id, ma: ma, source: source });
       updateQueueUI();
       
+      // 2. Ép gửi cấp tốc (chỉ chờ đúng 10 mili-giây thay vì 300ms)
       if (!batchTimer) {
         batchTimer = setTimeout(() => {
            batchTimer = null;
            processQueue();
-        }, 300);
+        }, 10);
       }
     }
 
@@ -286,7 +289,6 @@
       queue = [];
       updateQueueUI();
       
-      // Bật chế độ Xoay vòng (Đang đẩy dữ liệu)
       setSyncState('syncing');
       
       const payloadData = batch.map(b => b.ma);
@@ -308,14 +310,23 @@
           res.results.forEach(item => {
             const originalItem = batch.find(b => b.ma === item.ma);
             const source = originalItem ? originalItem.source : 'gun';
-            updateHistory(item.ma, item.status === "SUCCESS");
+            const originalId = originalItem ? originalItem.id : null;
+            
+            // Tìm và đổi màu trạng thái trong Lịch sử thành Thành Công/Thất Bại
+            if (originalId) {
+                const histItem = historyData.find(h => h.id === originalId);
+                if (histItem) histItem.status = item.status === "SUCCESS" ? 'success' : 'error';
+            }
+            
             msg(item.msg, item.status === "SUCCESS" ? "success" : "error", source);
           });
           
+          renderHistory(); // Cập nhật lại màu sắc bảng Lịch sử
+
           if (queue.length === 0) {
-             setSyncState('idle'); // Xong xuôi -> Xanh lá đứng yên
+             setSyncState('idle'); 
           } else {
-             setSyncState('queued'); // Còn hàng đợi -> Chuyển màu vàng đợi gửi chuyến tiếp
+             setSyncState('queued'); 
           }
         }
         if (queue.length > 0) processQueue();
@@ -323,7 +334,7 @@
       .catch(err => {
         isSending = false;
         msg("LỖI MẠNG: Đang thử kết nối lại...", "error", "gun");
-        setSyncState('error'); // Lỗi mạng -> Đỏ đứng yên
+        setSyncState('error'); 
         
         queue = [...batch, ...queue]; 
         updateQueueUI();
@@ -338,10 +349,30 @@
       else if (type === 'success' && source === 'gun') { playSound(1000, 'sine', 0.15); }
     }
 
-    function updateHistory(ma, ok) {
-      const now = new Date().toLocaleTimeString('vi-VN', { hour12: false });
-      history.unshift(`<li class="p-3 flex justify-between items-center bg-white border-b"><span class="font-bold ${ok ? 'text-gray-700' : 'text-red-500 line-through'}">${ma}</span><span class="text-[10px] text-gray-400 font-mono">${now} ${ok ? '✅' : '❌'}</span></li>`);
-      historyList.innerHTML = history.slice(0, 50).join('');
+    // Hàm Vẽ Lại Lịch Sử thông minh
+    function renderHistory() {
+      if (historyData.length === 0) {
+        historyList.innerHTML = '<li class="p-4 text-center text-gray-300 text-xs italic">Chưa có dữ liệu...</li>';
+        return;
+      }
+      
+      historyList.innerHTML = historyData.map(item => {
+        let statusIcon = '<span class="animate-pulse text-blue-500 text-[12px]">⏳</span>';
+        let textStyle = 'text-blue-600 font-bold';
+        let liStyle = 'bg-blue-50/40';
+        
+        if (item.status === 'success') {
+           statusIcon = '✅';
+           textStyle = 'text-gray-700 font-bold';
+           liStyle = 'bg-white';
+        } else if (item.status === 'error') {
+           statusIcon = '❌';
+           textStyle = 'text-red-500 font-bold line-through';
+           liStyle = 'bg-red-50/40';
+        }
+
+        return `<li class="p-3 flex justify-between items-center ${liStyle} border-b transition-all duration-300"><span class="${textStyle}">${item.ma}</span><span class="text-[10px] text-gray-500 font-mono flex items-center gap-1">${item.time} ${statusIcon}</span></li>`;
+      }).join('');
     }
 
     function updateQueueUI() {
